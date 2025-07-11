@@ -1,0 +1,36 @@
+html,
+body {
+  @apply m-0 p-0 font-sans bg-gray-100 text-gray-800;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply m-0;
+}
+
+a {
+  @apply no-underline text-blue-600;
+}
+
+a:hover {
+  @apply underline;
+}
+
+.container {
+  @apply max-w-6xl mx-auto p-5;
+}
+
+.header {
+  @apply bg-blue-600 text-white py-2 text-center;
+}
+
+.footer {
+  @apply bg-gray-800 text-white text-center py-2 relative bottom-0 w-full;
+}
+
+.team-card {
+  @apply bg-white border border-gray-300 rounded-lg p-4 m-2 shadow-md;
+}
+
+.team-card img {
+  @apply max-w-full rounded-lg;
+}
