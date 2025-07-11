@@ -1,18 +1,41 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { clubs } from "../data/clubs";
-
+import { db } from "../firebaseConfig";
+import { collection, getDocs } from "firebase/firestore";
 
 const Club: React.FC = () => {
   const router = useRouter();
-  const clubName = localStorage.getItem("clubName");
-  const club = clubs.find((c) => c.name.toLowerCase() === clubName?.toLowerCase());
+  const [club, setClub] = useState<any | null>(null);
 
   useEffect(() => {
     const role = localStorage.getItem("role");
     if (role !== "club") {
       router.push("/login");
+      return;
     }
+
+    const fetchClub = async () => {
+      const clubName = localStorage.getItem("clubName");
+      if (!clubName) return;
+
+      try {
+        const clubsCollection = collection(db, "clubs");
+        const snapshot = await getDocs(clubsCollection);
+        const clubsData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        const foundClub = clubsData.find(
+          (c) => c.name.toLowerCase() === clubName.toLowerCase()
+        );
+        setClub(foundClub || null);
+      } catch (error) {
+        console.error("Error fetching club data:", error);
+      }
+    };
+
+    fetchClub();
   }, [router]);
 
   const handleLogout = () => {
@@ -23,7 +46,7 @@ const Club: React.FC = () => {
   if (!club) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-xl font-bold">Club not found</p>
+        <p>Loading club data...</p>
       </div>
     );
   }
