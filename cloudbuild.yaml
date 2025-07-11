@@ -4,6 +4,7 @@ steps:
   env:
     - 'PROJECT_ID=${_PROJECT_ID}'
     - 'CLOUDSDK_CORE_DISABLE_PROMPTS=1'
+    - 'GOOGLE_NODE_RUN_SCRIPTS='
 
 options:
   logging: CLOUD_LOGGING_ONLY
