@@ -1,0 +1,22 @@
+steps:
+  # Instalar dependencias
+  - name: "node:16"
+    entrypoint: "npm"
+    args: ["install"]
+
+  # Construir la aplicación
+  - name: "node:16"
+    entrypoint: "npm"
+    args: ["run", "build"]
+
+  # Desplegar a Firebase Hosting
+  - name: "gcr.io/firebase-ci/firebase-tools"
+    args: ["deploy", "--only", "hosting"]
+
+# Opcional: Subir artefactos de la build (si es necesario)
+artifacts:
+  objects:
+    location: "gs://[YOUR_BUCKET_NAME]/artifacts/"
+    paths: ["build/**"]
+
+# Sustituye [YOUR_BUCKET_NAME] con el nombre de tu bucket de GCP.
