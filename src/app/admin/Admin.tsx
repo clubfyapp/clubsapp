@@ -1,118 +1,350 @@
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/router";
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  onSnapshot,
-} from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, addDoc } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useRouter } from "next/navigation";
 
 const Admin: React.FC = () => {
   const [clubs, setClubs] = useState<any[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [newClub, setNewClub] = useState({ name: "", description: "" });
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [showClubForm, setShowClubForm] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: "",
+    password: "",
+    role: "admin",
+    clubId: "",
+  });
+  const [newClub, setNewClub] = useState({
+    nombre: "",
+    description: "",
+    escudoFile: null as File | null,
+    colorPrimario: "#000000",
+    colorSecundario: "#FFFFFF",
+  });
+  const [fileName, setFileName] = useState<string>(""); // Estado para mostrar el nombre del archivo seleccionado
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null); // Referencia al input de archivo
   const router = useRouter();
+  const auth = getAuth();
+  const storage = getStorage();
 
+  // Fetch clubs from Firestore
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    if (role !== "admin") {
-      router.push("/login");
-    }
+    const fetchClubs = async () => {
+      try {
+        const clubsCollection = collection(db, "clubs");
+        const querySnapshot = await getDocs(clubsCollection);
+        const clubsData = querySnapshot.docs.map((doc) => ({
+          clubId: doc.id,
+          ...doc.data(),
+        }));
+        setClubs(clubsData);
+      } catch (error) {
+        console.error("Error fetching clubs:", error);
+        setError("Failed to fetch clubs. Please try again.");
+      }
+    };
 
-    // Fetch clubs from Firestore
-    const unsubscribe = onSnapshot(collection(db, "clubs"), (snapshot) => {
-      const clubsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setClubs(clubsData);
-    });
+    fetchClubs();
+  }, []);
 
-    return () => unsubscribe(); // Cleanup listener
-  }, [router]);
-
-  const handleAddClub = async () => {
+  // Handle create user
+  const handleCreateUser = async () => {
     try {
-      await addDoc(collection(db, "clubs"), {
-        name: newClub.name,
-        description: newClub.description,
-        logo: "/default-logo.svg", // Default logo
-      });
-      setShowModal(false);
-      setNewClub({ name: "", description: "" });
+      if (!newUser.email || !newUser.password || !newUser.role) {
+        setError("All fields are required.");
+        return;
+      }
+
+      // Crear usuario en Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        newUser.email,
+        newUser.password
+      );
+
+      // Guardar datos del usuario en Firestore
+      const userData = {
+        email: newUser.email,
+        role: newUser.role,
+        clubId: newUser.role === "club" ? newUser.clubId : null,
+      };
+
+      await addDoc(collection(db, "users"), userData);
+
+      // Resetear el formulario y cerrar el modal
+      setNewUser({ email: "", password: "", role: "admin", clubId: "" });
+      setShowUserModal(false);
     } catch (error) {
-      console.error("Error adding club: ", error);
+      console.error("Error creating user:", error);
+      setError("Failed to create user. Please try again.");
     }
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
+  const handleCreateClub = async () => {
+    try {
+      if (!newClub.nombre || !newClub.description || !newClub.escudoFile) {
+        setError("Todos los campos son obligatorios.");
+        return;
+      }
+
+      if (!newClub.escudoFile || !newClub.escudoFile.name) {
+        setError("Por favor, selecciona un archivo válido.");
+        return;
+      }
+
+      // Subir el archivo del escudo a Firebase Storage
+      const storageRef = ref(storage, `club-logos/${newClub.escudoFile.name}`); // Usar `file.name` en lugar de `file.path`
+      await uploadBytes(storageRef, newClub.escudoFile);
+      const escudoUrl = await getDownloadURL(storageRef);
+
+      // Guardar el club en Firestore
+      await addDoc(collection(db, "clubs"), {
+        nombre: newClub.nombre,
+        description: newClub.description,
+        escudoUrl,
+        colorPrimario: newClub.colorPrimario,
+        colorSecundario: newClub.colorSecundario,
+      });
+
+      // Resetear el formulario y actualizar la lista de clubes
+      setNewClub({
+        nombre: "",
+        description: "",
+        escudoFile: null,
+        colorPrimario: "#000000",
+        colorSecundario: "#FFFFFF",
+      });
+      setFileName(""); // Limpiar el nombre del archivo
+      setShowClubForm(false);
+
+      // Refrescar la lista de clubes
+      const clubsCollection = collection(db, "clubs");
+      const querySnapshot = await getDocs(clubsCollection);
+      const clubsData = querySnapshot.docs.map((doc) => ({
+        clubId: doc.id,
+        ...doc.data(),
+      }));
+      setClubs(clubsData);
+    } catch (error) {
+      console.error("Error creating club:", error);
+      setError("No se pudo crear el club. Por favor, inténtalo de nuevo.");
+    }
+  };
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setNewClub({ ...newClub, escudoFile: file });
+    setFileName(file ? file.name : ""); // Actualizar el nombre del archivo
+  };
+
+  // Handle delete club
+  const handleDeleteClub = async (clubId: string) => {
+    try {
+      await deleteDoc(doc(db, "clubs", clubId));
+      setClubs(clubs.filter((club) => club.clubId !== clubId));
+    } catch (error) {
+      console.error("Error deleting club:", error);
+      setError("Failed to delete club. Please try again.");
+    }
   };
 
   return (
     <div className="min-h-screen p-6 bg-gray-100">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <button
-          onClick={handleLogout}
-          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-        >
-          Logout
-        </button>
-      </div>
-      <div className="mb-6">
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-        >
-          Add New Club
-        </button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {clubs.map((club) => (
-          <div
-            key={club.id}
-            className="p-4 bg-white rounded shadow-md border"
+        <h1 className="text-3xl font-bold">Admin Panel</h1>
+        <div className="space-x-4">
+          <button
+            onClick={() => setShowUserModal(true)}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
           >
-            <h2 className="text-lg font-bold">{club.name}</h2>
-            <p>{club.description}</p>
+            Crear Usuario
+          </button>
+          <button
+            onClick={() => setShowClubForm(!showClubForm)}
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+          >
+            {showClubForm ? "Cerrar Formulario" : "Crear Club"}
+          </button>
+        </div>
+      </div>
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+
+      {/* Formulario para crear un nuevo club */}
+      {showClubForm && (
+        <div className="bg-white p-4 rounded shadow-md mb-6">
+          <h2 className="text-xl font-bold mb-4">Crear Nuevo Club</h2>
+          <input
+            type="text"
+            value={newClub.nombre}
+            onChange={(e) => setNewClub({ ...newClub, nombre: e.target.value })}
+            placeholder="Nombre del Club"
+            className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+          />
+          <textarea
+            value={newClub.description}
+            onChange={(e) =>
+              setNewClub({ ...newClub, description: e.target.value })
+            }
+            placeholder="Descripción del Club"
+            className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()} // Abrir el selector de archivos
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mb-4"
+          >
+            Seleccionar Archivo
+          </button>
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef} // Referencia al input de archivo
+            onChange={handleFileSelect}
+            className="hidden" // Ocultar el input de archivo
+          />
+          {fileName && <p className="text-sm text-gray-500 mb-4">Archivo: {fileName}</p>}
+          <div className="flex space-x-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Color Primario
+              </label>
+              <input
+                type="color"
+                value={newClub.colorPrimario}
+                onChange={(e) =>
+                  setNewClub({ ...newClub, colorPrimario: e.target.value })
+                }
+                className="w-16 h-10 border border-gray-300 rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Color Secundario
+              </label>
+              <input
+                type="color"
+                value={newClub.colorSecundario}
+                onChange={(e) =>
+                  setNewClub({ ...newClub, colorSecundario: e.target.value })
+                }
+                className="w-16 h-10 border border-gray-300 rounded"
+              />
+            </div>
           </div>
-        ))}
+          <button
+            onClick={handleCreateClub}
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+          >
+            Crear Club
+          </button>
+        </div>
+      )}
+
+      {/* List of Clubs */}
+      <div className="bg-white p-4 rounded shadow-md mb-6">
+        <h2 className="text-xl font-bold mb-4">Clubs</h2>
+        <ul>
+          {clubs.map((club) => (
+            <li
+              key={club.clubId}
+              className="flex flex-col border-b py-4"
+            >
+              <div className="flex items-center space-x-4">
+                {club.escudoUrl && (
+                  <img
+                    src={club.escudoUrl}
+                    alt={`${club.nombre} Logo`}
+                    className="w-12 h-12 object-cover rounded-full"
+                  />
+                )}
+                <div>
+                  <p className="font-bold">{club.nombre || "Unnamed Club"}</p>
+                  <p className="text-sm text-gray-500">
+                    {club.description || "No description available"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex space-x-2 mt-4">
+                <button
+                  onClick={() => router.push(`/admin/edit-club/${club.clubId}`)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDeleteClub(club.clubId)}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Borrar
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      {showModal && (
+      {/* Modal para crear usuario */}
+      {showUserModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded shadow-md w-80">
-            <h2 className="text-lg font-bold mb-4">Add New Club</h2>
+          <div className="bg-white p-6 rounded shadow-md w-96">
+            <h2 className="text-xl font-bold mb-4">Crear Usuario</h2>
             <input
-              type="text"
-              placeholder="Club Name"
-              value={newClub.name}
-              onChange={(e) => setNewClub({ ...newClub, name: e.target.value })}
+              type="email"
+              value={newUser.email}
+              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+              placeholder="Email del Usuario"
               className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
             />
-            <textarea
-              placeholder="Club Description"
-              value={newClub.description}
+            <input
+              type="password"
+              value={newUser.password}
               onChange={(e) =>
-                setNewClub({ ...newClub, description: e.target.value })
+                setNewUser({ ...newUser, password: e.target.value })
               }
+              placeholder="Contraseña"
               className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
             />
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-300 text-black px-4 py-2 rounded mr-2"
+            <select
+              value={newUser.role}
+              onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+              className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+            >
+              <option value="admin">Admin</option>
+              <option value="club">Club</option>
+            </select>
+            {newUser.role === "club" && (
+              <select
+                value={newUser.clubId}
+                onChange={(e) =>
+                  setNewUser({ ...newUser, clubId: e.target.value })
+                }
+                className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
               >
-                Cancel
+                <option value="">Seleccionar Club</option>
+                {clubs.map((club) => (
+                  <option key={club.clubId} value={club.clubId}>
+                    {club.nombre}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={() => setShowUserModal(false)}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+              >
+                Cancelar
               </button>
               <button
-                onClick={handleAddClub}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                onClick={handleCreateUser}
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
               >
-                Add
+                Crear
               </button>
             </div>
           </div>

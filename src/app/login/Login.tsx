@@ -3,25 +3,8 @@
 // Import the Firebase modules
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-
-// Your Firebase configuration object
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Export the authentication module
-export const auth = getAuth(app);
+import { db } from "../firebaseConfig";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 const Login: React.FC = () => {
   const router = useRouter();
@@ -31,18 +14,41 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      // Consulta a Firestore para buscar el usuario por correo
+      const usuariosCollection = collection(db, "usuarios");
+      const q = query(usuariosCollection, where("email", "==", email));
+      const querySnapshot = await getDocs(q);
 
-      // Guarda el rol del usuario en localStorage (puedes obtenerlo de Firestore si es necesario)
-      localStorage.setItem("role", "admin"); // Cambia esto según el rol real del usuario
-      localStorage.setItem("userId", user.uid);
+      if (querySnapshot.empty) {
+        setError("Invalid email or password");
+        return;
+      }
 
-      // Redirige a la página principal
-      router.push("/admin");
+      // Obtén el usuario de la base de datos
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+
+      // Verifica la contraseña como string
+      if (password !== userData.password) {
+        setError("Invalid email or password");
+        return;
+      }
+
+      // Guarda el rol y el ID del usuario en localStorage
+      localStorage.setItem("role", userData.rol);
+      localStorage.setItem("userId", userDoc.id);
+
+      if (userData.rol === "club") {
+        localStorage.setItem("clubId", userData.clubId);
+        router.push("/club");
+      } else if (userData.rol === "admin") {
+        router.push("/admin");
+      }
     } catch (error) {
-      setError("Invalid email or password");
+      console.error("Error during login:", error);
+      setError("An error occurred. Please try again.");
     }
   };
 

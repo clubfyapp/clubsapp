@@ -1,11 +1,10 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getAnalytics, isSupported } from "firebase/analytics";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Tu configuración de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyAn7wrBby7KhSh0X2h-Njak4v7cU8vEtbI",
   authDomain: "clubfyapp.firebaseapp.com",
@@ -13,9 +12,23 @@ const firebaseConfig = {
   storageBucket: "clubfyapp.firebasestorage.app",
   messagingSenderId: "907266981821",
   appId: "1:907266981821:web:1392edf2f8fb56e4b21cd4",
-  measurementId: "G-HWJSEWQMKW"
+  measurementId: "G-HWJSEWQMKW",
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// Inicializa Firebase solo si no está ya inicializado
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+
+// Inicializa Analytics solo si es compatible
+let analytics;
+if (typeof window !== "undefined") {
+  isSupported().then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  });
+}
+
+// Export the Firestore instance
+export { db };
+export const auth = getAuth(app);
