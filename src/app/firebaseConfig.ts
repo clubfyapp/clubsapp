@@ -3,13 +3,14 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { getStorage } from "firebase/storage";
 
 // Tu configuración de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyAn7wrBby7KhSh0X2h-Njak4v7cU8vEtbI",
   authDomain: "clubfyapp.firebaseapp.com",
   projectId: "clubfyapp",
-  storageBucket: "clubfyapp.firebasestorage.app",
+  storageBucket: "clubfyapp.appspot.com",
   messagingSenderId: "907266981821",
   appId: "1:907266981821:web:1392edf2f8fb56e4b21cd4",
   measurementId: "G-HWJSEWQMKW",
@@ -30,5 +31,9 @@ if (typeof window !== "undefined") {
 }
 
 // Export the Firestore instance
+
+const firebaseApp = initializeApp(firebaseConfig);
+const storage = getStorage(firebaseApp);
+
 export { db };
-export const auth = getAuth(app);
+export { firebaseApp, storage };

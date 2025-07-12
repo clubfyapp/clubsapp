@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { db } from "../firebaseConfig";
+import { db, firebaseApp } from "../firebaseConfig";
 import { collection, getDocs, deleteDoc, doc, addDoc } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -29,7 +29,7 @@ const Admin: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null); // Referencia al input de archivo
   const router = useRouter();
   const auth = getAuth();
-  const storage = getStorage();
+  const storage = getStorage(firebaseApp, "gs://clubfyapp.firebasestorage.app");
 
   // Fetch clubs from Firestore
   useEffect(() => {
@@ -53,11 +53,16 @@ const Admin: React.FC = () => {
 
   // Handle create user
   const handleCreateUser = async () => {
+
+    console.log("handleCreateUser se está ejecutando"); // Log inicial
+
     try {
       if (!newUser.email || !newUser.password || !newUser.role) {
-        setError("All fields are required.");
+        setError("Todos los campos son obligatorios.");
         return;
       }
+
+      console.log("Datos del usuario antes de guardar:", newUser);
 
       // Crear usuario en Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
@@ -69,9 +74,12 @@ const Admin: React.FC = () => {
       // Guardar datos del usuario en Firestore
       const userData = {
         email: newUser.email,
+        password: newUser.password, // Guardar la contraseña en texto plano
         role: newUser.role,
         clubId: newUser.role === "club" ? newUser.clubId : null,
       };
+
+      console.log("Datos que se guardarán en Firestore:", userData);
 
       await addDoc(collection(db, "users"), userData);
 
@@ -80,7 +88,7 @@ const Admin: React.FC = () => {
       setShowUserModal(false);
     } catch (error) {
       console.error("Error creating user:", error);
-      setError("Failed to create user. Please try again.");
+      setError("No se pudo crear el usuario. Por favor, inténtalo de nuevo.");
     }
   };
 
@@ -96,10 +104,24 @@ const Admin: React.FC = () => {
         return;
       }
 
+      if (!newClub.escudoFile.type.startsWith("image/")) {
+        setError("El archivo debe ser una imagen (PNG, JPG, etc.).");
+        return;
+      }
+
       // Subir el archivo del escudo a Firebase Storage
-      const storageRef = ref(storage, `club-logos/${newClub.escudoFile.name}`); // Usar `file.name` en lugar de `file.path`
+      const sanitizedFileName = newClub.escudoFile.name.replace(/\s+/g, "_");
+      const storageRef = ref(storage, `club-logos/${sanitizedFileName}`);
+      console.log("Subiendo archivo a:", `club-logos/${sanitizedFileName}`);
+      console.log("Iniciando la subida del archivo...");
+      console.log("Archivo seleccionado:", newClub.escudoFile);
+      console.log("Nombre del archivo:", sanitizedFileName);
+      console.log("Bucket de almacenamiento:", storage.app.options.storageBucket);
+      console.log("Referencia del archivo:", `club-logos/${sanitizedFileName}`);
       await uploadBytes(storageRef, newClub.escudoFile);
+      console.log("Archivo subido correctamente.");
       const escudoUrl = await getDownloadURL(storageRef);
+      console.log("URL del archivo:", escudoUrl);
 
       // Guardar el club en Firestore
       await addDoc(collection(db, "clubs"), {
@@ -110,7 +132,7 @@ const Admin: React.FC = () => {
         colorSecundario: newClub.colorSecundario,
       });
 
-      // Resetear el formulario y actualizar la lista de clubes
+      // Resetear el formulario
       setNewClub({
         nombre: "",
         description: "",
@@ -118,20 +140,19 @@ const Admin: React.FC = () => {
         colorPrimario: "#000000",
         colorSecundario: "#FFFFFF",
       });
-      setFileName(""); // Limpiar el nombre del archivo
+      setFileName("");
       setShowClubForm(false);
-
-      // Refrescar la lista de clubes
-      const clubsCollection = collection(db, "clubs");
-      const querySnapshot = await getDocs(clubsCollection);
-      const clubsData = querySnapshot.docs.map((doc) => ({
-        clubId: doc.id,
-        ...doc.data(),
-      }));
-      setClubs(clubsData);
-    } catch (error) {
-      console.error("Error creating club:", error);
-      setError("No se pudo crear el club. Por favor, inténtalo de nuevo.");
+    } catch (error: any) {
+      console.error("Error creando el club:", error);
+      if (error.code === "storage/unauthorized") {
+        setError("No tienes permisos para subir archivos.");
+      } else if (error.code === "storage/canceled") {
+        setError("La subida del archivo fue cancelada.");
+      } else if (error.code === "storage/unknown") {
+        setError("Ocurrió un error desconocido. Por favor, verifica la configuración.");
+      } else {
+        setError("No se pudo crear el club. Por favor, inténtalo de nuevo.");
+      }
     }
   };
 
@@ -211,7 +232,7 @@ const Admin: React.FC = () => {
           <div className="flex space-x-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Color Primario
+                Primera Equipación
               </label>
               <input
                 type="color"
@@ -224,7 +245,7 @@ const Admin: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Color Secundario
+                Segunda Equipación
               </label>
               <input
                 type="color"
@@ -303,9 +324,7 @@ const Admin: React.FC = () => {
             <input
               type="password"
               value={newUser.password}
-              onChange={(e) =>
-                setNewUser({ ...newUser, password: e.target.value })
-              }
+              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
               placeholder="Contraseña"
               className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
             />

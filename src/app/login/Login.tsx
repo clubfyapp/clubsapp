@@ -16,39 +16,30 @@ const Login: React.FC = () => {
     e.preventDefault();
 
     try {
-      // Consulta a Firestore para buscar el usuario por correo
-      const usuariosCollection = collection(db, "usuarios");
-      const q = query(usuariosCollection, where("email", "==", email));
-      const querySnapshot = await getDocs(q);
+      // Buscar el usuario en la colección `users`
+      const usersCollection = collection(db, "users");
+      const querySnapshot = await getDocs(usersCollection);
 
-      if (querySnapshot.empty) {
-        setError("Invalid email or password");
+      const user = querySnapshot.docs
+        .map((doc) => ({ id: doc.id, ...(doc.data() as { email: string; password: string; role: string; clubId?: string }) }))
+        .find((user) => user.email === email && user.password === password);
+
+      if (!user) {
+        setError("Email o contraseña incorrectos.");
         return;
       }
 
-      // Obtén el usuario de la base de datos
-      const userDoc = querySnapshot.docs[0];
-      const userData = userDoc.data();
-
-      // Verifica la contraseña como string
-      if (password !== userData.password) {
-        setError("Invalid email or password");
-        return;
-      }
-
-      // Guarda el rol y el ID del usuario en localStorage
-      localStorage.setItem("role", userData.rol);
-      localStorage.setItem("userId", userDoc.id);
-
-      if (userData.rol === "club") {
-        localStorage.setItem("clubId", userData.clubId);
-        router.push("/club");
-      } else if (userData.rol === "admin") {
-        router.push("/admin");
+      // Verificar el rol del usuario y redirigir
+      if (user.role === "admin") {
+        router.push("/admin"); // Redirigir al panel de administración
+      } else if (user.role === "club" && user.clubId) {
+        router.push(`/club/${user.clubId}`); // Redirigir a la página del club
+      } else {
+        router.push("/dashboard"); // Redirigir al dashboard para usuarios normales
       }
     } catch (error) {
-      console.error("Error during login:", error);
-      setError("An error occurred. Please try again.");
+      console.error("Error al iniciar sesión:", error);
+      setError("No se pudo iniciar sesión. Por favor, inténtalo de nuevo.");
     }
   };
 
